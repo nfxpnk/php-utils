@@ -19,42 +19,63 @@ foreach($svgFontTemplate as $key => $value) {
 	$svgFontTemplate[$key] = trim($value);
 }
 
-// Optimaze SVG files with svgo
-// Minify svg icon with svgo tool
-// system($svgoPath . ' ' . $svgGlyphArray[$svgNum]['path'] . ' ' . $svgGlyphArray[$svgNum]['minPath']);
-
 // Collect icons data from files
 $svgGlyphArray = array();
 $svgNum = 0;
 foreach($svgIcons as $svgIcon) {
 	// Skip empty files
 	if(filesize($svgIcon) == 0) {
+		var_dump(__LINE__);
 		continue;
 	}
-	
-	$filename = basename($svgIcon);
-	
+
 	// Get svg data from svg icon filename (num, unicode, glyph-name)
-	$svgData = str_replace('.svg', '', $filename);
-	$svgData = preg_split("#[-\.\/]#", $svgData, 4);
+	$svgData = str_replace('.svg', '', basename($svgIcon));
+	$svgData = preg_split("#[-\.\/]#", $svgData, 3);
 
 	// Skip SVG files with wrong names
 	if(!is_array($svgData) || count($svgData) != 3) {
+		var_dump($svgData, __LINE__);
 		continue;
 	}
-	
+
 	$svgGlyphArray[$svgNum]['num'] = $svgData[0];
 	$svgGlyphArray[$svgNum]['unicode'] = $svgData[1];
 	$svgGlyphArray[$svgNum]['glyphName'] = $svgData[2];
 	$svgGlyphArray[$svgNum]['path'] = $svgIcon;
-	$svgGlyphArray[$svgNum]['minPath'] = 'icons-min/' . str_replace('.svg', '.min.svg', $filename);
+	$svgGlyphArray[$svgNum]['minPath'] = str_replace(array('icons/', '.svg'), array('icons/min/', '.min.svg'), $svgIcon);
+
 	$svgGlyphArray[$svgNum]['svgFontPath'] = getSvgPathForFont($svgIcon);
+
+	// Optimaze SVG files with svgo
+	// Minify svg icon with svgo tool
+	if(!file_exists($svgGlyphArray[$svgNum]['minPath'])) {
+		system($svgoPath . ' -i ' . $svgGlyphArray[$svgNum]['path'] . ' -o ' . $svgGlyphArray[$svgNum]['minPath']);
+	}
+
 	$svgGlyphArray[$svgNum]['svgCssPath'] = getSvgPathForCss($svgGlyphArray[$svgNum]['minPath']);
 	$svgNum++;
-	exit;
+}
+
+//var_dump($svgGlyphArray);
+
+$svgFontFileContent = $svgFontTemplate[0] . "\r\n";
+foreach ($svgGlyphArray as $svgData) {
+	$svgGlyph = str_replace('{$path}', $svgData['svgFontPath'], $svgFontTemplate[1]);
+	$svgGlyph = str_replace('{$unicode}', '&#x' . $svgData['unicode'] . ';', $svgGlyph);
+	$svgGlyph = str_replace('{$glyphName}', $svgData['glyphName'], $svgGlyph);
+	$svgFontFileContent .= "\t" . $svgGlyph . "\r\n";
+}
+$svgFontFileContent .= $svgFontTemplate[2] . "\r\n";
+if(file_put_contents($svgFontFile, $svgFontFileContent)) {
+	echo $svgFontFile . ' created' . "\r\n";
 }
 
 function getSvgPathForFont($svgIcon) {
+	if(!file_exists($svgIcon)) {
+		var_dump($svgIcon, __LINE__);
+		return '';
+	}
 	// Get d attribute from original svg file
 	$svgContent = file_get_contents($svgIcon);
 	preg_match("#\sd=\"(.+?)\"#umsi", $svgContent, $path);
@@ -80,6 +101,10 @@ function getSvgPathForFont($svgIcon) {
 }
 
 function getSvgPathForCss($svgIconMin) {
+	if(!file_exists($svgIconMin)) {
+		var_dump($svgIconMin, __LINE__);
+		return '';
+	}
 	// Get d attribute from mini svg file
 	$svgMinContent = file_get_contents($svgIconMin);
 	preg_match("#\sd=\"(.+?)\"#umsi", $svgMinContent, $path);
@@ -92,69 +117,35 @@ function getSvgPathForCss($svgIconMin) {
 	return $path[1];
 }
 
-var_dump($svgGlyphArray);
-exit;
-
-foreach($svgIcons as $svgIcon) {
-	$svgGlyph = str_replace('{$path}', $path3, $svgFontTemplate[1]);
-	$svgGlyph = str_replace('{$unicode}', '&#x' . $svgData[2] . ';', $svgGlyph);
-	$svgGlyph = str_replace('{$glyphName}', $svgData[3], $svgGlyph);
-	$svgGlyphArray[$svgData[2]] = $svgData;
-	$svgGlyphArray[$svgData[2]]['svgGlyph'] = $svgGlyph;
-}
-
-$svgFontFileContent = $svgFontTemplate[0] . "\r\n";
-foreach ($svgGlyphArray as $svgData) {
-	$svgFontFileContent .= "\t" . $svgData['svgGlyph'] . "\r\n";
-}
-$svgFontFileContent .= $svgFontTemplate[2] . "\r\n";
-file_put_contents($svgFontFile, $svgFontFileContent);
-
 
 /* CSS Generation */
 
+$css01 = '';
+$css02 = '';
+$css03 = '';
+$css04 = '';
+foreach($svgGlyphArray as $glyphData) {
+	$css01 .= '$fa-var-' . $glyphData['glyphName'] . '-custom-icon: "\\' . $glyphData['unicode'] . '";
+%#{$fa-css-prefix}-' . $glyphData['glyphName'] . '-custom-icon:before {
+	content: $fa-var-' . $glyphData['glyphName'] . '-custom-icon;
+}' . "\r\n\r\n";
 
-foreach($cssArray as $unicode => $glyphName) {
-	/*echo '$fa-var-'.$glyphName.'-custom-icon: "\\' . $unicode . '";
-%#{$fa-css-prefix}-'.$glyphName.'-custom-icon:before {
-	content: $fa-var-'.$glyphName.'-custom-icon;
-}' . "\r\n\r\n";*/
+$css01 .= '// .icon-' . $glyphData['glyphName'] . '-custom - ' . $glyphData['glyphName'] . ' icon' . "\r\n";
 
-}
+$css02 .= '.icon-' . $glyphData['glyphName'] . '-custom,' . "\r\n";
 
-foreach($cssArray as $unicode => $glyphName) {
-	//echo '// .icon-'.$glyphName.'-custom - '.$glyphName.' icon' . "\r\n";
-}
+	$css03 .= '.icon-' . $glyphData['glyphName'] . '-custom {
+	@extend %fa-' . $glyphData['glyphName'] . '-custom-icon;
+}' . "\r\n\r\n";
 
-foreach($cssArray as $unicode => $glyphName) {
-	//echo '.icon-'.$glyphName.'-custom,' . "\r\n";
-}
-
-foreach($cssArray as $unicode => $glyphName) {
-	/*echo '.icon-'.$glyphName.'-custom {
-	@extend %fa-'.$glyphName.'-custom-icon;
-}' . "\r\n\r\n";*/
-}
-
-foreach($cssArray as $unicode => $glyphName) {
-	$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" height="1024" width="1024" version="1"><path d="' . $svgGlyphArray[$unicode]['path'] . '"/></svg>';
-
-	$svg = str_replace('d="', 'fill="fillPlaceholder" d="', $svg);
-	$svg = rawurlencode($svg);
-	$svg = str_replace('%20', ' ', $svg);
-	$svg = str_replace('fillPlaceholder', '#{$fill-color}', $svg);
-
-	//echo '$svg-path-' . $glyphName . ": '" .$svgGlyphArray[$unicode]['path']. "';\r\n";
+	$css04 .= '$svg-path-' . $glyphData['glyphName'] . ": '" . $glyphData['svgCssPath'] . "';\r\n";
 	
-	/*echo '.icon-'.$glyphName.'-custom-svg {
-	background-image: url(create-svg($svg-path-'.$glyphName.', \'#000\'));
-}' . "\r\n\r\n";*/
+	$css04 .= '.icon-' . $glyphData['glyphName'] . '-custom-svg {
+	background-image: url(create-svg($svg-path-' . $glyphData['glyphName'] . ', $sc-color-primary));
+}' . "\r\n\r\n";
 }
 
-
-foreach($cssArray as $unicode => $glyphName) {
-	//echo '<div class="svg-' . $glyphName . '"></div>' . "\r\n";
-}
+echo $css01, $css02, $css03, $css04;
 
 /**
  * Parse the d attribute of an svg path element.
