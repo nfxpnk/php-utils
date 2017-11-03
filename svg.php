@@ -1,5 +1,7 @@
 <?php
-// node svgo binary path
+// Configuration
+
+// Nodejs-based tool for optimizing SVG vector graphics files
 $svgoPath = 'H:/github/svg-files-to-svg-font/node_modules/.bin/svgo.cmd';
 
 // Original SVG icons
@@ -8,32 +10,51 @@ $svgIcons = glob('icons/*.svg');
 // Template for SVG font
 $svgFontTemplate = file_get_contents('svg.template');
 
+// Filename for SVG font
+$svgFontFile = 'NetSuite Custom Icons.svg';
+
 // Split template into parts
 $svgFontTemplate = explode('<!-- split -->', $svgFontTemplate);
 foreach($svgFontTemplate as $key => $value) {
 	$svgFontTemplate[$key] = trim($value);
 }
 
-$svgGlyphArray = array();
-$cssArray = array();
+// Optimaze SVG files with svgo
+// Minify svg icon with svgo tool
+// system($svgoPath . ' ' . $svgGlyphArray[$svgNum]['path'] . ' ' . $svgGlyphArray[$svgNum]['minPath']);
 
+// Collect icons data from files
+$svgGlyphArray = array();
+$svgNum = 0;
 foreach($svgIcons as $svgIcon) {
 	// Skip empty files
 	if(filesize($svgIcon) == 0) {
 		continue;
 	}
-
-	// Filename for minified svg icon
-	$svgIconMin = str_replace('icons/', 'icons/min/', $svgIcon);
-	$svgIconMin = str_replace('.svg', '.min.svg', $svgIconMin);
-
-	// Minify svg icon with svgo tool
-	// system($svgoPath . ' ' . $svgIcon . ' ' . $svgIconMin);
-
+	
+	$filename = basename($svgIcon);
+	
 	// Get svg data from svg icon filename (num, unicode, glyph-name)
-	$svgData = str_replace('.svg', '', $svgIcon);
+	$svgData = str_replace('.svg', '', $filename);
 	$svgData = preg_split("#[-\.\/]#", $svgData, 4);
 
+	// Skip SVG files with wrong names
+	if(!is_array($svgData) || count($svgData) != 3) {
+		continue;
+	}
+	
+	$svgGlyphArray[$svgNum]['num'] = $svgData[0];
+	$svgGlyphArray[$svgNum]['unicode'] = $svgData[1];
+	$svgGlyphArray[$svgNum]['glyphName'] = $svgData[2];
+	$svgGlyphArray[$svgNum]['path'] = $svgIcon;
+	$svgGlyphArray[$svgNum]['minPath'] = 'icons-min/' . str_replace('.svg', '.min.svg', $filename);
+	$svgGlyphArray[$svgNum]['svgFontPath'] = getSvgPathForFont($svgIcon);
+	$svgGlyphArray[$svgNum]['svgCssPath'] = getSvgPathForCss($svgGlyphArray[$svgNum]['minPath']);
+	$svgNum++;
+	exit;
+}
+
+function getSvgPathForFont($svgIcon) {
 	// Get d attribute from original svg file
 	$svgContent = file_get_contents($svgIcon);
 	preg_match("#\sd=\"(.+?)\"#umsi", $svgContent, $path);
@@ -41,46 +62,46 @@ foreach($svgIcons as $svgIcon) {
 	// Exit if there is no d attribute in path
 	if(!isset($path[1])) {
 		var_dump($svgIcon, $svgContent, $path, __LINE__);
-		exit;
+		return '';
 	}
-
-	// 1 get path string and convert to array
+	// 1. Get path string and convert it into array
 	$parsedPath = parsePath($path[1]);
 
-	// 2 is absolute or relative
-	
-	// 3 convert from absolute to relative
+	// 2. Convert from absolute to relative
 	// $parsedPath = convertToRelative($parsedPath);
 	
-	//var_dump($parsedPath);
-	//var_dump($convertToRelative);
-	//exit;
-	
-	// 4 transform path for font
+	// 3. Transform path for font
 	$transformedPath = transformPath($parsedPath);
 	
-	// 5 get path array and convert to string
-	$path3 = pathString($parsedPath);
+	// 4. Get path array and convert to string
+	$path = pathString($transformedPath);
 
-	var_dump($path3);
+	return $path;
+}
 
-	
+function getSvgPathForCss($svgIconMin) {
+	// Get d attribute from mini svg file
+	$svgMinContent = file_get_contents($svgIconMin);
+	preg_match("#\sd=\"(.+?)\"#umsi", $svgMinContent, $path);
+
+	// Exit if there is no d attribute in path
+	if(!isset($path[1])) {
+		var_dump($svgIconMin, $svgMinContent, $path, __LINE__);
+		return '';
+	}
+	return $path[1];
+}
+
+var_dump($svgGlyphArray);
+exit;
+
+foreach($svgIcons as $svgIcon) {
 	$svgGlyph = str_replace('{$path}', $path3, $svgFontTemplate[1]);
 	$svgGlyph = str_replace('{$unicode}', '&#x' . $svgData[2] . ';', $svgGlyph);
 	$svgGlyph = str_replace('{$glyphName}', $svgData[3], $svgGlyph);
 	$svgGlyphArray[$svgData[2]] = $svgData;
 	$svgGlyphArray[$svgData[2]]['svgGlyph'] = $svgGlyph;
-	
-	$svgMinContent = file_get_contents($svgIconMin);
-	preg_match("#\sd=\"(.+?)\"#umsi", $svgMinContent, $path);
-	//var_dump($svgIconMin, $svgMinContent);
-	//exit;
-	
-	$svgGlyphArray[$svgData[2]]['path'] = $path[1];
-	$cssArray[$svgData[2]] = $svgData[3];
 }
-
-$svgFontFile = 'NetSuite Custom Icons.svg';
 
 $svgFontFileContent = $svgFontTemplate[0] . "\r\n";
 foreach ($svgGlyphArray as $svgData) {
@@ -223,7 +244,7 @@ function transformPath($path, $height=16, $descent= -4) {
 
 
 /**
- * Scale, and turn it back into a string
+ * Back into a string
  **/
 function pathString($path) {
 	$d = '';
