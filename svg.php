@@ -1,9 +1,15 @@
 <?php
+// node svgo binary path
+$svgoPath = 'H:/github/svg-files-to-svg-font/node_modules/.bin/svgo.cmd';
+
+// Original SVG icons
 $svgIcons = glob('icons/*.svg');
 
+// Template for SVG font
 $svgFontTemplate = file_get_contents('svg.template');
-$svgFontTemplate = explode('<!-- split -->', $svgFontTemplate);
 
+// Split template into parts
+$svgFontTemplate = explode('<!-- split -->', $svgFontTemplate);
 foreach($svgFontTemplate as $key => $value) {
 	$svgFontTemplate[$key] = trim($value);
 }
@@ -11,32 +17,54 @@ foreach($svgFontTemplate as $key => $value) {
 $svgGlyphArray = array();
 $cssArray = array();
 
-$svgFontTemplate[0] = str_replace('{$ascent}', 1024 - 4, $svgFontTemplate[0]);
-$svgFontTemplate[0] = str_replace('{$descent}', -4, $svgFontTemplate[0]);
-
 foreach($svgIcons as $svgIcon) {
+	// Skip empty files
 	if(filesize($svgIcon) == 0) {
 		continue;
 	}
 
+	// Filename for minified svg icon
 	$svgIconMin = str_replace('icons/', 'icons/min/', $svgIcon);
 	$svgIconMin = str_replace('.svg', '.min.svg', $svgIconMin);
-	
-	system('H:/github/svg-files-to-svg-font/node_modules/.bin/svgo.cmd ' . $svgIcon . ' ' . $svgIconMin);
 
+	// Minify svg icon with svgo tool
+	// system($svgoPath . ' ' . $svgIcon . ' ' . $svgIconMin);
+
+	// Get svg data from svg icon filename (num, unicode, glyph-name)
 	$svgData = str_replace('.svg', '', $svgIcon);
 	$svgData = preg_split("#[-\.\/]#", $svgData, 4);
 
+	// Get d attribute from original svg file
 	$svgContent = file_get_contents($svgIcon);
 	preg_match("#\sd=\"(.+?)\"#umsi", $svgContent, $path);
 
+	// Exit if there is no d attribute in path
 	if(!isset($path[1])) {
-		var_dump($svgContent, $path);
+		var_dump($svgIcon, $svgContent, $path, __LINE__);
+		exit;
 	}
 
-	$path3 = parse_path($path[1]);
-	$path3 = transform_path($path3);
-	$path3 = path_string($path3);
+	// 1 get path string and convert to array
+	$parsedPath = parsePath($path[1]);
+
+	// 2 is absolute or relative
+	
+	// 3 convert from absolute to relative
+	// $parsedPath = convertToRelative($parsedPath);
+	
+	//var_dump($parsedPath);
+	//var_dump($convertToRelative);
+	//exit;
+	
+	// 4 transform path for font
+	$transformedPath = transformPath($parsedPath);
+	
+	// 5 get path array and convert to string
+	$path3 = pathString($parsedPath);
+
+	var_dump($path3);
+
+	
 	$svgGlyph = str_replace('{$path}', $path3, $svgFontTemplate[1]);
 	$svgGlyph = str_replace('{$unicode}', '&#x' . $svgData[2] . ';', $svgGlyph);
 	$svgGlyph = str_replace('{$glyphName}', $svgData[3], $svgGlyph);
@@ -61,26 +89,30 @@ foreach ($svgGlyphArray as $svgData) {
 $svgFontFileContent .= $svgFontTemplate[2] . "\r\n";
 file_put_contents($svgFontFile, $svgFontFileContent);
 
+
+/* CSS Generation */
+
+
 foreach($cssArray as $unicode => $glyphName) {
-	echo '$fa-var-'.$glyphName.'-custom-icon: "\\' . $unicode . '";
+	/*echo '$fa-var-'.$glyphName.'-custom-icon: "\\' . $unicode . '";
 %#{$fa-css-prefix}-'.$glyphName.'-custom-icon:before {
 	content: $fa-var-'.$glyphName.'-custom-icon;
-}' . "\r\n\r\n";
+}' . "\r\n\r\n";*/
 
 }
 
 foreach($cssArray as $unicode => $glyphName) {
-	echo '// .icon-'.$glyphName.'-custom - '.$glyphName.' icon' . "\r\n";
+	//echo '// .icon-'.$glyphName.'-custom - '.$glyphName.' icon' . "\r\n";
 }
 
 foreach($cssArray as $unicode => $glyphName) {
-	echo '.icon-'.$glyphName.'-custom,' . "\r\n";
+	//echo '.icon-'.$glyphName.'-custom,' . "\r\n";
 }
 
 foreach($cssArray as $unicode => $glyphName) {
-	echo '.icon-'.$glyphName.'-custom {
+	/*echo '.icon-'.$glyphName.'-custom {
 	@extend %fa-'.$glyphName.'-custom-icon;
-}' . "\r\n\r\n";
+}' . "\r\n\r\n";*/
 }
 
 foreach($cssArray as $unicode => $glyphName) {
@@ -91,7 +123,7 @@ foreach($cssArray as $unicode => $glyphName) {
 	$svg = str_replace('%20', ' ', $svg);
 	$svg = str_replace('fillPlaceholder', '#{$fill-color}', $svg);
 
-	echo '$svg-path-' . $glyphName . ": '" .$svgGlyphArray[$unicode]['path']. "';\r\n";
+	//echo '$svg-path-' . $glyphName . ": '" .$svgGlyphArray[$unicode]['path']. "';\r\n";
 	
 	/*echo '.icon-'.$glyphName.'-custom-svg {
 	background-image: url(create-svg($svg-path-'.$glyphName.', \'#000\'));
@@ -106,7 +138,7 @@ foreach($cssArray as $unicode => $glyphName) {
 /**
  * Parse the d attribute of an svg path element.
  **/
-function parse_path($d) {
+function parsePath($d) {
 	$d = trim($d);
 	$l = strlen($d);
 	$path = array();
@@ -141,7 +173,7 @@ function parse_path($d) {
 /**
  * Mirror and adjust to baseline
  **/
-function transform_path($path, $height=1001, $descent= -4) {
+function transformPath($path, $height=16, $descent= -4) {
 	$top = ($height + $descent);
 	foreach ($path as $i => $args) {
 		switch ($args[0]) {
@@ -193,7 +225,17 @@ function transform_path($path, $height=1001, $descent= -4) {
 /**
  * Scale, and turn it back into a string
  **/
-function path_string($path, $scale=1) {
+function pathString($path) {
+	$d = '';
+	foreach($path as $args) {
+		$d .= $args[0];
+		unset($args[0]);
+		$d .= implode(',', $args);
+	}
+	return trim($d);
+}
+
+function pathString2($path) {
 	$d = '';
 	$type = '';
 	foreach($path as $args) {
@@ -206,17 +248,154 @@ function path_string($path, $scale=1) {
 		$type = $args[0];
 		$args = array_slice($args, 1);
 		if (strtolower($type) == 'a') {
-			$args[0] = intval($args[0] * $scale);
-			$args[1] = intval($args[1] * $scale);
-		//	$args[2] = ($args[0] == $args[1]) ? 0 : $args[2]; // done in transform
+			$args[0] = intval($args[0]);
+			$args[1] = intval($args[1]);
+			$args[2] = ($args[0] == $args[1]) ? 0 : $args[2]; // done in transform
 			$args[3] = (int)(bool)$args[4];
 			$args[4] = (int)(bool)$args[5];
-			$args[5] = intval($args[5] * $scale);
-			$args[6] = intval($args[6] * $scale);
+			$args[5] = intval($args[5]);
+			$args[6] = intval($args[6]);
 		} else {
-			foreach($args as $i => $v) { $args[$i] = intval($v * $scale); }
+			foreach($args as $i => $v) {
+				$args[$i] = intval($v);
+			}
 		}
 		$d .= implode(',', $args);
 	}
 	return trim($d);
+}
+
+
+/**
+ * Convert absolute path data coordinates to relative.
+ *
+ * @param {Array} path input path data
+ * @param {Object} params plugin params
+ * @return {Array} output path data
+ */
+ 
+function convertToRelative($path) {
+	$point = array(0, 0);
+	$subpathPoint = array(0, 0);
+
+	$relativePath = array();
+	
+	foreach($path as $index => $data) {
+		$instruction = $data[0];
+		unset($data[0]);
+		$data = array_values($data);
+
+		// data !== !z
+		if ($data) {
+			// already relative
+			// recalculate current point
+			if (strpos('mcslqta', $instruction) !== false) {
+				$point[0] += $data[count($data) - 2];
+				$point[1] += $data[count($data) - 1];
+				if ($instruction === 'm') {
+					$subpathPoint[0] = $point[0];
+					$subpathPoint[1] = $point[1];
+				}
+			} else if ($instruction === 'h') {
+				$point[0] += $data[0];
+			} else if ($instruction === 'v') {
+				$point[1] += $data[0];
+			}
+			// end of IF
+
+
+			// convert absolute path data coordinates to relative
+			// if "M" was not transformed from "m"
+			// M → m
+			if ($instruction === 'M') {
+				if ($index > 0) {
+					$instruction = 'm';
+				}
+
+				$data[0] -= $point[0];
+				$data[1] -= $point[1];
+
+				$subpathPoint[0] = $point[0] += $data[0];
+				$subpathPoint[1] = $point[1] += $data[1];
+			}
+
+			// L → l
+			// T → t
+			else if (strpos('LT', $instruction) !== false) {
+				$instruction = strtolower($instruction);
+
+				// x y
+				// 0 1
+				$data[0] -= $point[0];
+				$data[1] -= $point[1];
+
+				$point[0] += $data[0];
+				$point[1] += $data[1];
+			// C → c
+			} else if ($instruction === 'C') {
+				$instruction = 'c';
+
+				// x1 y1 x2 y2 x y
+				// 0  1  2  3  4 5
+				$data[0] -= $point[0];
+				$data[1] -= $point[1];
+				$data[2] -= $point[0];
+				$data[3] -= $point[1];
+				$data[4] -= $point[0];
+				$data[5] -= $point[1];
+
+				$point[0] += $data[4];
+				$point[1] += $data[5];
+
+			// S → s
+			// Q → q
+			} else if (strpos('SQ', $instruction) !== false) {
+				$instruction = strtolower($instruction);
+
+				// x1 y1 x y
+				// 0  1  2 3
+				$data[0] -= $point[0];
+				$data[1] -= $point[1];
+				$data[2] -= $point[0];
+				$data[3] -= $point[1];
+
+				$point[0] += $data[2];
+				$point[1] += $data[3];
+
+			// A → a
+			} else if ($instruction === 'A') {
+				$instruction = 'a';
+
+				// rx ry x-axis-rotation large-arc-flag sweep-flag x y
+				// 0  1  2			   3			  4		  5 6
+				$data[5] -= $point[0];
+				$data[6] -= $point[1];
+
+				$point[0] += $data[5];
+				$point[1] += $data[6];
+
+			// H → h
+			} else if ($instruction === 'H') {
+				$instruction = 'h';
+				$data[0] -= $point[0];
+				$point[0] += $data[0];
+
+			// V → v
+			} else if ($instruction === 'V') {
+
+				$instruction = 'v';
+				$data[0] -= $point[1];
+				$point[1] += $data[0];
+			}
+
+			$relativePath[$index] = array_merge(array($instruction), $data);
+		} 
+		else if ($instruction == 'z') { // !data === z, reset current point
+			$relativePath[$index][0] = $instruction;
+
+			$point[0] = $subpathPoint[0];
+			$point[1] = $subpathPoint[1];
+		}
+	}
+	return $relativePath;
 }
